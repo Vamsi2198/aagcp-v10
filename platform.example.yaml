@@ -1,0 +1,37 @@
+# Copy to platform.yaml and fill in. Do NOT commit the result.
+# Prefer key-pair auth; leave password empty and export
+# AAGCP_SNOWFLAKE_PASSWORD if you must use one.
+platform:
+  type: snowflake
+  account: ZMKJJYC-WC99553
+  user: dinumop
+  password: ""
+  private_key_path: ""
+  warehouse: COMPUTE_WH
+  database: DEMO_DB
+  schema: DEMO_SCHEMA
+  # Not ACCOUNTADMIN. See platform.py — under a privileged role every
+  # permission-failure path in the executor becomes unreachable, so the
+  # demo proves less than one run as a scoped role.
+  role: AAGCP_EXEC
+  allow_privileged: false
+
+policy:
+  id: demo_dpdp
+  name: DPDP demo policy
+  regime: DPDP Act 2023
+  citation: DPDP Act 2023 s.8
+  closed_list: false
+  identifiers:
+    - key: email
+      label: Email address
+      treatment: tokenize
+      citation: DPDP Act 2023 s.8(4)
+    - key: phone
+      label: Mobile number
+      treatment: mask_partial
+      citation: DPDP Act 2023 s.8(4)
+    - key: aadhaar
+      label: Aadhaar number
+      treatment: tokenize
+      citation: DPDP Act 2023 s.8(4)

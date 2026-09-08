@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aagcp"
+version = "0.9.0"
+description = "Agent governance control plane: structured data and vector stores"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+# aagcp.core is stdlib-only by contract and needs nothing here.
+# The verifier needs numeric and signing libraries.
+verify = ["numpy>=1.24", "cryptography>=41"]
+# Executors against a real warehouse.
+snowflake = ["snowflake-connector-python>=3.0"]
+postgres = ["psycopg[binary]>=3.1"]
+config = ["PyYAML>=6.0"]
+all = ["numpy>=1.24", "cryptography>=41", "snowflake-connector-python>=3.0",
+       "psycopg[binary]>=3.1", "PyYAML>=6.0"]
+
+[project.scripts]
+aagcp = "aagcp.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["aagcp*"]
