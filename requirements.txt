@@ -1,6 +1,1 @@
-# aagcp.core needs nothing. Install extras for what you actually use:
-#   pip install -e .[verify]      erasure verification (numpy, cryptography)
-#   pip install -e .[snowflake]   live Snowflake executor
-#   pip install -e .[config]      YAML config (a strict fallback parser
-#                                 handles the flat subset without it)
-#   pip install -e .[all]
+
