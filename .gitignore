@@ -1,0 +1,16 @@
+# Python bytecode caches — never commit these
+__pycache__/
+*.pyc
+
+# Packaging / install artifacts
+*.egg-info/
+build/
+dist/
+
+# Acceptance-harness output (audit journals are runtime state, not source)
+aagcp-acceptance.jsonl
+aagcp-acceptance.checkpoint.json
+aagcp.jsonl
+
+# Local config (contains real credentials once edited)
+platform.yaml

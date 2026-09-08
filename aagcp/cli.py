@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -53,12 +54,40 @@ def main(argv=None) -> int:
 
     if args.cmd == "serve":
         from . import api
+        from .core.journal import Principal
         print("aagcp serve is a demonstration surface, not a hardened one: "
               "no TLS, no rate limiting, no tenant isolation. Put it behind "
               "a proxy and an identity provider.", file=sys.stderr)
-        registry = api.Registry(tokens={})
+        # Tokens come from AAGCP_TOKENS because a restarted process must
+        # recognise the same principals: comma-separated entries of
+        #   token:principal_id:role:max_approval_tier
+        # e.g.  AAGCP_TOKENS=tk-dpo:dpo@acme.example:privacy-officer:4
+        # tier 0 means the principal may not approve anything (an agent).
+        tokens = {}
+        raw = os.environ.get("AAGCP_TOKENS", "")
+        for entry in raw.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            parts = entry.split(":")
+            if len(parts) != 4 or not parts[0]:
+                print(f"ignoring malformed AAGCP_TOKENS entry: {entry!r} "
+                      f"(want token:principal_id:role:tier)", file=sys.stderr)
+                continue
+            try:
+                tier = int(parts[3])
+            except ValueError:
+                print(f"ignoring AAGCP_TOKENS entry with non-integer tier: "
+                      f"{entry!r}", file=sys.stderr)
+                continue
+            tokens[parts[0]] = Principal(principal_id=parts[1],
+                                         role=parts[2],
+                                         max_approval_tier=tier)
+        registry = api.Registry(tokens=tokens)
         server, thread = api.serve(args.journal, registry, args.host, args.port)
         print(f"listening on http://{args.host}:{args.port} "
+              f"({len(tokens)} principal(s) configured)" if tokens else
+              f"listening on http://{args.host}:{args.port} "
               f"(no tokens configured; every authenticated route will 401)")
         try:
             thread.join()
