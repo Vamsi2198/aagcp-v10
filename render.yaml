@@ -3,7 +3,7 @@ services:
     name: aagcp-v10
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -e ".[verify,config]"
     startCommand: aagcp serve --host 0.0.0.0 --port $PORT --journal /var/data/aagcp.jsonl
     envVars:
       - key: PYTHON_VERSION
