@@ -47,6 +47,7 @@ SEPARATION OF DUTIES is enforced here rather than by convention: the
 principal who submitted a change cannot approve it, and no principal can
 approve above their own authority tier.
 """
+
 from __future__ import annotations
 
 import hashlib

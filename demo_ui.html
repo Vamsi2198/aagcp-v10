@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>aagcp console — full lifecycle</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3;
+          --dim:#8b949e; --ok:#3fb950; --bad:#f85149; --warn:#d29922; --acc:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px; max-width: 1020px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin-bottom: 20px; font-size: 13px; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+           border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  label { color: var(--dim); font-size: 12px; display: block; margin-bottom: 4px; }
+  input { background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+          border-radius: 6px; padding: 8px 10px; width: 100%; font: inherit; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 200px; }
+  button { background: #21262d; color: var(--fg); border: 1px solid var(--border);
+           border-radius: 6px; padding: 8px 14px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--acc); }
+  button.primary { border-color: var(--acc); color: var(--acc); }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+  h2 { font-size: 13px; color: var(--dim); text-transform: uppercase;
+       letter-spacing: .08em; margin: 0 0 10px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+        padding: 14px; overflow: auto; max-height: 460px; margin: 0;
+        font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+  .status { font-weight: 600; margin-bottom: 8px; font-family: ui-monospace, monospace; }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
+  .status.gate { color: var(--warn); }
+  .chips { display: flex; gap: 8px; margin-top: 8px; }
+  .chips button { font-size: 12px; padding: 4px 10px; color: var(--dim); }
+  /* pipeline */
+  .pipe { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .step { flex: 1; min-width: 95px; text-align: center; padding: 8px 4px;
+          border: 1px solid var(--border); border-radius: 6px;
+          background: var(--bg); color: var(--dim); font-size: 12px; }
+  .step b { display: block; font-size: 11px; color: var(--dim); margin-bottom: 2px; }
+  .step.done { border-color: var(--ok); color: var(--ok); }
+  .step.done b { color: var(--ok); }
+  .step.cur { border-color: var(--acc); color: var(--acc); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 8px; }
+  code { color: var(--acc); }
+  .note { color: var(--dim); font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>aagcp console — full lifecycle</h1>
+<div class="sub">All 8 phases drivable by hand. The journal enforces order and the gates —
+this page only presses the buttons. Restart <code>demo_ui.py</code> to wipe the journal.</div>
+
+<div class="panel">
+  <div class="row">
+    <div>
+      <label>bearer token (issued out-of-band — there is no login endpoint)</label>
+      <input id="token" value="tk-analyst">
+      <div class="chips">
+        <button onclick="setToken('tk-analyst')">tk-analyst — you (tier 0)</button>
+        <button onclick="setToken('tk-dpo')">tk-dpo — approver (tier 4)</button>
+      </div>
+    </div>
+    <div>
+      <label>request id</label>
+      <div class="row">
+        <input id="rid" value="REQ-DEMO">
+        <button class="primary" style="white-space:nowrap" onclick="newRequest()">＋ new request</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>pipeline state — <span id="pipestate">unknown</span></h2>
+  <div class="pipe" id="pipe"></div>
+  <div class="btns" style="display:flex;gap:8px">
+    <button class="primary" onclick="refreshState()">refresh state</button>
+    <button onclick="call('GET','/healthz',null,true)">healthz</button>
+    <button onclick="call('GET','/checkpoint',null,true)">checkpoint</button>
+    <button class="primary" onclick="ridCall('GET','/audit')">full audit trail</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>your data (optional JSON — empty = built-in demo estate)</h2>
+  <textarea id="payload" rows="10" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--fg);padding:10px;font:12px/1.5 ui-monospace,monospace" placeholder='{"columns": [...], "inspections": [...], "findings": [...]}'></textarea>
+  <div class="btns" style="display:flex;gap:8px;margin-top:8px">
+    <button onclick="loadExample()">load example (shows coverage catching a weak sample)</button>
+    <button onclick="document.getElementById('payload').value=''">clear</button>
+  </div>
+  <div class="note">This payload is exactly what the real scan layer would produce:
+  the catalog (<code>columns</code>), what sampling did (<code>inspections</code>),
+  what detectors found (<code>findings</code>). Steps 1–4 send it; the journal and
+  every later phase run on <i>your</i> data, not the demo's.</div>
+</div>
+
+<div class="panel">
+  <h2>the 8 phases — click in order, then try breaking the order</h2>
+  <div class="grid">
+    <button class="primary" onclick="phaseCall('observe')"><b>1 · observe</b><br>Phase 0 coverage</button>
+    <button class="primary" onclick="phaseCall('analyze')"><b>2 · analyze</b><br>findings digest</button>
+    <button class="primary" onclick="phaseCall('plan')"><b>3 · plan</b><br>compile SQL</button>
+    <button class="primary" onclick="phaseCall('simulate')"><b>4 · simulate</b><br>risk forecast</button>
+    <button class="danger" onclick="ridCall('POST','/approve')"><b>5 · approve</b><br>needs tk-dpo</button>
+    <button class="danger" onclick="ridCall('POST','/execute')"><b>6 · execute</b><br>run the DDL</button>
+    <button onclick="verify()"><b>7 · verify</b><br>record evidence</button>
+    <button class="danger" onclick="ridCall('POST','/close')"><b>8 · close</b><br>terminal</button>
+  </div>
+  <div class="note">Suggested story: run 1–4 as <b>tk-analyst</b> (watch the SQL appear at step 3,
+  the risk signals at 4). At 5, try approving as <b>yourself</b> first → 409 self-approval.
+  Then switch to <b>tk-dpo</b> for 5 and 7. Go back to <b>tk-analyst</b> for 6 and 8.
+  Afterwards try step 2 again, or anything on a closed request — the journal refuses.
+  After a restart (<code>demo_ui.py --serve-only</code>), try step 5: <code>FORECAST_NOT_IN_MEMORY</code>.</div>
+</div>
+
+<div class="panel">
+  <h2>Response</h2>
+  <div id="status" class="status">—</div>
+  <pre id="out">press a button</pre>
+</div>
+
+<script>
+const PHASES = ["observe","analyze","plan","simulate","approve","execute","verify","close"];
+const pipe = document.getElementById('pipe');
+for (const p of PHASES) {
+  const d = document.createElement('div');
+  d.className = 'step'; d.id = 'step-' + p;
+  d.innerHTML = '<b>' + p + '</b>—';
+  pipe.appendChild(d);
+}
+function setToken(t) { document.getElementById('token').value = t; }
+function rid() { return document.getElementById('rid').value.trim(); }
+function setRid(r) { document.getElementById('rid').value = r; }
+function ridCall(method, suffix) { return call(method, '/requests/' + rid() + suffix); }
+
+const EXAMPLE = {
+  inventory: {source: "my information_schema crawl", complete: false},
+  columns: [
+    {database: "ACME", schema: "PUBLIC", table: "customers", column: "email", data_type: "VARCHAR", row_estimate: 50000},
+    {database: "ACME", schema: "PUBLIC", table: "customers", column: "mobile", data_type: "VARCHAR", row_estimate: 50000},
+    {database: "ACME", schema: "PUBLIC", table: "customers", column: "dob", data_type: "DATE", row_estimate: 50000}
+  ],
+  inspections: [
+    {target: "ACME.PUBLIC.customers.email", method: "content_sample", sampled_rows: 5000, identifier_key: "email", confidence: 0.99},
+    {target: "ACME.PUBLIC.customers.mobile", method: "content_sample", sampled_rows: 20, identifier_key: "phone", confidence: 0.91}
+  ],
+  findings: [
+    {database: "ACME", schema: "PUBLIC", table: "customers", column: "email", identifier_key: "email", detector: "EMAIL", confidence: 0.99, row_estimate: 50000},
+    {database: "ACME", schema: "PUBLIC", table: "customers", column: "mobile", identifier_key: "phone", detector: "PHONE", confidence: 0.91, row_estimate: 50000}
+  ]
+};
+function loadExample() {
+  document.getElementById('payload').value = JSON.stringify(EXAMPLE, null, 2);
+}
+
+function phaseCall(action) {
+  const text = document.getElementById('payload').value.trim();
+  let body = null;
+  if (text) {
+    try { body = JSON.parse(text); }
+    catch (e) {
+      const status = document.getElementById('status');
+      status.textContent = 'payload is not valid JSON — fix it or clear it';
+      status.className = 'status bad';
+      return;
+    }
+  }
+  return call('POST', '/requests/' + rid() + '/' + action, body);
+}
+function verify() { return call('POST', '/requests/' + rid() + '/verify', {passed: true}); }
+
+function newRequest() {
+  const r = 'REQ-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+  setRid(r);
+  call('POST', '/requests/' + r + '/observe');
+}
+
+async function refreshState() {
+  const r = rid();
+  try {
+    const resp = await fetch('/requests/' + r, {headers: auth()});
+    const d = await resp.json();
+    document.getElementById('pipestate').textContent =
+      d.known ? ('current: ' + d.current_phase + (d.closed ? ' (closed)' : '')) : 'no such request yet';
+    for (const p of PHASES) {
+      const el = document.getElementById('step-' + p);
+      const done = d.phases && d.phases.includes(p);
+      el.className = 'step' + (done ? ' done' : (d.current_phase === p ? ' cur' : ''));
+      el.innerHTML = '<b>' + p + '</b>' + (done ? '✓' : (d.current_phase === p ? '→' : '—'));
+    }
+    return d;
+  } catch (e) { document.getElementById('pipestate').textContent = 'unreachable'; }
+}
+
+function auth() {
+  const h = {};
+  const t = document.getElementById('token').value.trim();
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+
+async function call(method, path, body, noAuth) {
+  const status = document.getElementById('status');
+  const out = document.getElementById('out');
+  const headers = {'Content-Type': 'application/json'};
+  if (!noAuth) Object.assign(headers, auth());
+  status.textContent = method + ' ' + path + ' …';
+  status.className = 'status';
+  out.textContent = '…';
+  try {
+    const r = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : undefined});
+    const text = await r.text();
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
+    status.textContent = 'HTTP ' + r.status +
+      (r.status === 409 ? '  REFUSED — a gate fired, nothing happened' : '');
+    status.className = 'status ' + (r.ok ? 'ok' : (r.status === 409 ? 'gate' : 'bad'));
+    out.textContent = pretty;
+  } catch (e) {
+    status.textContent = 'NETWORK ERROR — is demo_ui.py running?';
+    status.className = 'status bad';
+    out.textContent = String(e);
+  }
+  refreshState();
+}
+refreshState();
+</script>
+</body>
+</html>

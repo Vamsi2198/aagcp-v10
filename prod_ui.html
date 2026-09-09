@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>aagcp — real warehouse console</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3;
+          --dim:#8b949e; --ok:#3fb950; --bad:#f85149; --warn:#d29922; --acc:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif;
+         margin: 0; padding: 24px; max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin-bottom: 20px; font-size: 13px; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+           border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  label { color: var(--dim); font-size: 12px; display: block; margin-bottom: 4px; }
+  input, select { background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+                  border-radius: 6px; padding: 8px 10px; width: 100%; font: inherit; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 150px; }
+  button { background: #21262d; color: var(--fg); border: 1px solid var(--border);
+           border-radius: 6px; padding: 8px 14px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--acc); }
+  button.primary { border-color: var(--acc); color: var(--acc); }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  h2 { font-size: 13px; color: var(--dim); text-transform: uppercase;
+       letter-spacing: .08em; margin: 0 0 10px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+        padding: 14px; overflow: auto; max-height: 460px; margin: 0;
+        font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+  .status { font-weight: 600; margin-bottom: 8px; font-family: ui-monospace, monospace; }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
+  .status.gate { color: var(--warn); }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%;
+         background:var(--bad); margin-right:6px; }
+  .dot.on { background: var(--ok); }
+  .chips { display: flex; gap: 8px; margin-top: 8px; }
+  .chips button { font-size: 12px; padding: 4px 10px; color: var(--dim); }
+  .pipe { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .step { flex: 1; min-width: 90px; text-align: center; padding: 8px 4px;
+          border: 1px solid var(--border); border-radius: 6px;
+          background: var(--bg); color: var(--dim); font-size: 12px; }
+  .step b { display: block; font-size: 11px; margin-bottom: 2px; }
+  .step.done { border-color: var(--ok); color: var(--ok); }
+  .step.cur { border-color: var(--acc); color: var(--acc); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  code { color: var(--acc); }
+  .note { color: var(--dim); font-size: 12px; margin-top: 10px; }
+  .warn { color: var(--warn); font-size: 12px; margin-top: 8px; display: none; }
+</style>
+</head>
+<body>
+<h1>aagcp — real warehouse console</h1>
+<div class="sub">Real Snowflake, real scan, real governance. Connect → scan → 8-phase flow.
+Execute runs actual DDL on your account. <b>Masking policies are query-time — your data stays in place.</b></div>
+
+<div class="panel">
+  <h2>1 · connection — <span class="dot" id="dot"></span><span id="connstate">not connected</span></h2>
+  <div class="row">
+    <div><label>account identifier</label><input id="c_account" value="ZMKJJYC-WC99553"></div>
+    <div><label>user</label><input id="c_user" value="DINUMOP"></div>
+    <div><label>password</label><input id="c_password" type="password" placeholder="enter your password — never stored, never journaled"></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div><label>warehouse</label><input id="c_warehouse" value="COMPUTE_WH"></div>
+    <div><label>database</label><input id="c_database" value="DEMO_DB"></div>
+    <div><label>schema</label><input id="c_schema" value="DEMO_SCHEMA"></div>
+    <div><label>role</label><input id="c_role" value="ACCOUNTADMIN"></div>
+  </div>
+  <div class="btns" style="display:flex;gap:8px;margin-top:12px">
+    <button class="primary" onclick="doConnect()">test &amp; connect</button>
+    <span class="note" style="margin-top:10px">or put the same fields in <code>snowflake.local.json</code> (gitignored) and restart — it auto-connects.</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>2 · scan a schema for what policy must govern</h2>
+  <div class="row">
+    <div>
+      <label>policy</label>
+      <select id="policy"></select>
+    </div>
+    <div><label>sample size per column</label><input id="sample_size" type="number" value="500"></div>
+  </div>
+  <div id="dropwarn" class="warn"></div>
+  <div class="btns" style="display:flex;gap:8px;margin-top:12px">
+    <button class="primary" onclick="doScan()">scan schema</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>3 · the governed flow</h2>
+  <div class="row" style="margin-bottom:12px">
+    <div>
+      <label>bearer token</label>
+      <input id="token" value="tk-analyst">
+      <div class="chips">
+        <button onclick="setToken('tk-analyst')">tk-analyst — you</button>
+        <button onclick="setToken('tk-dpo')">tk-dpo — approver</button>
+      </div>
+    </div>
+    <div><label>request id</label><input id="rid" value="REQ-1"></div>
+  </div>
+  <div class="pipe" id="pipe"></div>
+  <div class="grid">
+    <button class="primary" onclick="ridCall('POST','/observe')"><b>1 · observe</b><br>coverage</button>
+    <button class="primary" onclick="ridCall('POST','/analyze')"><b>2 · analyze</b><br>findings</button>
+    <button class="primary" onclick="ridCall('POST','/plan')"><b>3 · plan</b><br>SQL</button>
+    <button class="primary" onclick="ridCall('POST','/simulate')"><b>4 · simulate</b><br>risk</button>
+    <button class="danger" onclick="ridCall('POST','/approve')"><b>5 · approve</b><br>dpo only</button>
+    <button class="danger" onclick="ridCall('POST','/execute')"><b>6 · execute</b><br>real DDL</button>
+    <button onclick="ridCall('POST','/reconcile')" style="border-color:var(--warn);color:var(--warn)"><b>⟳ · reconcile</b><br>resolve a dangling attempt</button>
+    <button onclick="verify()"><b>7 · verify</b><br>evidence</button>
+    <button class="danger" onclick="ridCall('POST','/close')"><b>8 · close</b></button>
+  </div>
+  <div class="note">Watch for: the scan caps the forecast at HIGH (one schema ≠ an estate),
+  so approval is always required. After <b>plan</b>, read the SQL — and if the policy has
+  DROP treatments, an orange warning lists the irreversible targets before you execute.</div>
+</div>
+
+<div class="panel">
+  <h2>Response</h2>
+  <div id="status" class="status">—</div>
+  <pre id="out">connect, then scan, then walk the flow</pre>
+</div>
+
+<script>
+const PHASES = ["observe","analyze","plan","simulate","approve","execute","verify","close"];
+const pipe = document.getElementById('pipe');
+for (const p of PHASES) {
+  const d = document.createElement('div');
+  d.className = 'step'; d.id = 'step-' + p;
+  d.innerHTML = '<b>' + p + '</b>—';
+  pipe.appendChild(d);
+}
+
+function setToken(t) { document.getElementById('token').value = t; }
+function rid() { return document.getElementById('rid').value.trim(); }
+function ridCall(method, suffix) { return call(method, '/requests/' + rid() + suffix); }
+function verify() { return call('POST', '/requests/' + rid() + '/verify', {passed: true}); }
+function auth() {
+  const h = {}; const t = document.getElementById('token').value.trim();
+  if (t) h['Authorization'] = 'Bearer ' + t;
+  return h;
+}
+
+async function boot() {
+  const r = await fetch('/api/policies');
+  const d = await r.json();
+  const sel = document.getElementById('policy');
+  for (const p of d.policies) {
+    const o = document.createElement('option');
+    o.value = p.policy_id;
+    o.textContent = `${p.policy_id} — ${p.name}`;
+    sel.appendChild(o);
+  }
+  sel.onchange = warnDrops;
+  window.POLICIES = Object.fromEntries(d.policies.map(p => [p.policy_id, p]));
+  warnDrops();
+  const c = await (await fetch('/api/connection')).json();
+  setConn(c.connected, c);
+}
+
+function warnDrops() {
+  const p = window.POLICIES && window.POLICIES[document.getElementById('policy').value];
+  const w = document.getElementById('dropwarn');
+  if (p && p.drop_treatments.length) {
+    w.style.display = 'block';
+    w.textContent = '⚠ this policy DROPs (' + p.drop_treatments.join(', ') +
+      ') — those operations are irreversible and tier HIGH. Masking policies (dpdp/hipaa default treatments) only filter at query time; the data stays.';
+  } else {
+    w.style.display = 'none';
+  }
+}
+
+function setConn(on, info) {
+  document.getElementById('dot').className = 'dot' + (on ? ' on' : '');
+  document.getElementById('connstate').textContent = on
+    ? `connected: ${info.account} · ${info.user} · ${info.database || '(no db)'}.${info.schema}`
+    : 'not connected';
+}
+
+function creds() {
+  return {
+    account: v('c_account'), user: v('c_user'), password: v('c_password'),
+    warehouse: v('c_warehouse'), database: v('c_database'),
+    schema: v('c_schema'), role: v('c_role')
+  };
+}
+function v(id) { return document.getElementById(id).value.trim(); }
+
+async function doConnect() {
+  const r = await raw('POST', '/api/connect', creds());
+  if (r.ok) { document.getElementById('c_password').value = ''; setConn(true, r.body); }
+  return r;
+}
+async function doScan() {
+  const r = await raw('POST', '/api/scan',
+    {policy_id: v('policy'), sample_size: parseInt(v('sample_size') || '500')});
+  return r;
+}
+
+async function raw(method, path, body) {
+  const status = document.getElementById('status');
+  const out = document.getElementById('out');
+  status.textContent = method + ' ' + path + ' …';
+  status.className = 'status';
+  out.textContent = '…';
+  try {
+    const r = await fetch(path, {method, headers: {'Content-Type': 'application/json', ...auth()},
+                                 body: body ? JSON.stringify(body) : undefined});
+    const text = await r.text();
+    let pretty = text, parsed = null;
+    try { parsed = JSON.parse(text); pretty = JSON.stringify(parsed, null, 2); } catch (e) {}
+    status.textContent = 'HTTP ' + r.status +
+      (r.status === 409 ? '  REFUSED — a gate fired, nothing happened' : '');
+    status.className = 'status ' + (r.ok ? 'ok' : (r.status === 409 ? 'gate' : 'bad'));
+    out.textContent = pretty;
+    return {ok: r.ok, status: r.status, body: parsed};
+  } catch (e) {
+    status.textContent = 'NETWORK ERROR — is prod_ui.py running on :8100?';
+    status.className = 'status bad';
+    out.textContent = String(e);
+    return {ok: false};
+  }
+}
+
+async function call(method, path, body, noAuth) {
+  if (noAuth) {
+    const r = await fetch(path);
+    const t = await r.text();
+    let p = t; try { p = JSON.stringify(JSON.parse(t), null, 2); } catch(e) {}
+    document.getElementById('status').textContent = 'HTTP ' + r.status;
+    document.getElementById('status').className = 'status ' + (r.ok ? 'ok' : 'bad');
+    document.getElementById('out').textContent = p;
+    return;
+  }
+  const r = await raw(method, path, body);
+  refreshState();
+  return r;
+}
+
+async function refreshState() {
+  try {
+    const resp = await fetch('/requests/' + rid(), {headers: auth()});
+    const d = await resp.json();
+    for (const p of PHASES) {
+      const el = document.getElementById('step-' + p);
+      const done = d.phases && d.phases.includes(p);
+      el.className = 'step' + (done ? ' done' : (d.current_phase === p ? ' cur' : ''));
+      el.innerHTML = '<b>' + p + '</b>' + (done ? '✓' : (d.current_phase === p ? '→' : '—'));
+    }
+  } catch (e) {}
+}
+boot();
+refreshState();
+</script>
+</body>
+</html>

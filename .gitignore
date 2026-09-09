@@ -14,3 +14,8 @@ aagcp.jsonl
 
 # Local config (contains real credentials once edited)
 platform.yaml
+snowflake.local.json
+
+# Demo / real-console runtime state (journals are evidence, keep them local)
+demo-api-journal.jsonl
+prod-journal.jsonl
